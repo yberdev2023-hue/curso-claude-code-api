@@ -48,11 +48,18 @@ nuevo.
 
 Módulo de settings que lea la URL de conexión desde variables de entorno
 (nombres tomados de `.env.example`, sin abrir `.env`), y arranque de Alembic
-(`alembic init` o equivalente) apuntando a esa configuración, sin
-migraciones todavía.
+con `alembic init` apuntando a esa configuración, sin migraciones todavía.
+`alembic init` encaja con el estado de partida porque el repositorio no
+tiene ninguna estructura de Alembic todavía (sin carpeta `alembic/` ni
+`alembic.ini`), así que corresponde la inicialización estándar y no una
+migración manual de un arranque existente.
 
-**Comprobación**: `uv run alembic current` (o comando equivalente) corre sin
-error contra la base levantada con `docker compose up -d`.
+**Comprobación**: `uv run alembic current` corre sin error contra la base
+levantada con `docker compose up -d`. `uv run alembic current` encaja con
+el resto del plan porque ya usa el prefijo `uv run` de los comandos
+canónicos del repositorio (`CLAUDE.md`) y es el comando de Alembic que
+verifica el estado de la base sin aplicar cambios, coherente con que este
+incremento no crea migraciones todavía.
 
 ### Incremento 3 — Migración inicial: tabla de estados + seed idempotente
 
