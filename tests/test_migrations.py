@@ -11,6 +11,7 @@ después de cada prueba para partir de una base vacía.
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tests.conftest import reset_schema, run_alembic
@@ -55,7 +56,7 @@ async def test_downgrade_revierte_limpio(db_connection: AsyncConnection) -> None
     result = run_alembic("downgrade", "base")
     assert result.returncode == 0, result.stderr
 
-    for tabla in ("states", "projects"):
+    for tabla in ("states", "projects", "tasks"):
         existe = (
             await db_connection.execute(
                 text(
@@ -94,3 +95,76 @@ async def test_upgrade_head_crea_tabla_projects_con_columnas_esperadas(
     assert por_nombre["name"].is_nullable == "NO"
     assert por_nombre["description"].data_type == "text"
     assert por_nombre["description"].is_nullable == "YES"
+
+
+@pytest.mark.asyncio
+async def test_upgrade_head_crea_tabla_tasks_con_columnas_y_fks_esperadas(
+    db_connection: AsyncConnection,
+) -> None:
+    assert run_alembic("upgrade", "head").returncode == 0
+
+    columnas = (
+        await db_connection.execute(
+            text(
+                "SELECT column_name, data_type, is_nullable "
+                "FROM information_schema.columns "
+                "WHERE table_name = 'tasks'"
+            )
+        )
+    ).all()
+    por_nombre = {row.column_name: row for row in columnas}
+
+    assert set(por_nombre) == {"id", "title", "description", "project_id", "state_id"}
+    assert por_nombre["id"].data_type == "integer"
+    assert por_nombre["title"].data_type == "character varying"
+    assert por_nombre["title"].is_nullable == "NO"
+    assert por_nombre["description"].data_type == "text"
+    assert por_nombre["description"].is_nullable == "YES"
+    assert por_nombre["project_id"].data_type == "integer"
+    assert por_nombre["project_id"].is_nullable == "NO"
+    assert por_nombre["state_id"].data_type == "integer"
+    assert por_nombre["state_id"].is_nullable == "NO"
+
+    fks = (
+        await db_connection.execute(
+            text(
+                "SELECT ccu.table_name AS tabla_referenciada "
+                "FROM information_schema.table_constraints tc "
+                "JOIN information_schema.constraint_column_usage ccu "
+                "ON tc.constraint_name = ccu.constraint_name "
+                "WHERE tc.table_name = 'tasks' AND tc.constraint_type = 'FOREIGN KEY'"
+            )
+        )
+    ).all()
+
+    assert {row.tabla_referenciada for row in fks} == {"projects", "states"}
+
+
+@pytest.mark.asyncio
+async def test_borrar_proyecto_o_estado_referenciado_por_tarea_falla(
+    db_connection: AsyncConnection,
+) -> None:
+    assert run_alembic("upgrade", "head").returncode == 0
+
+    proyecto = (
+        await db_connection.execute(
+            text(
+                "INSERT INTO projects (name) VALUES ('Casa') RETURNING id"
+            )
+        )
+    ).scalar_one()
+    estado = (
+        await db_connection.execute(text("SELECT id FROM states WHERE code = 'PENDIENTE'"))
+    ).scalar_one()
+    await db_connection.execute(
+        text(
+            "INSERT INTO tasks (title, project_id, state_id) "
+            "VALUES ('Regar las plantas', :project_id, :state_id)"
+        ),
+        {"project_id": proyecto, "state_id": estado},
+    )
+    await db_connection.commit()
+
+    with pytest.raises(IntegrityError):
+        await db_connection.execute(text("DELETE FROM projects WHERE id = :id"), {"id": proyecto})
+    await db_connection.rollback()

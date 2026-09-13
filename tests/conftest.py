@@ -21,10 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from app.settings import get_database_url
 
-# Todas las tablas creadas por migraciones hasta hoy. Agregar acá cada tabla
-# nueva evita que un test posterior falle con "relation already exists" por
-# un residuo de una corrida interrumpida.
-TABLAS_GESTIONADAS = ("projects", "states")
+# Todas las tablas creadas por migraciones hasta hoy, en orden de borrado
+# seguro: `tasks` tiene FKs hacia `projects` y `states`, así que debe
+# dropearse primero. Agregar acá cada tabla nueva evita que un test
+# posterior falle con "relation already exists" por un residuo de una
+# corrida interrumpida.
+TABLAS_GESTIONADAS = ("tasks", "projects", "states")
 
 
 @pytest_asyncio.fixture
