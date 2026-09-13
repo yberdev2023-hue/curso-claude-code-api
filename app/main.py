@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import text
 
 from app.db import get_engine
-from app.schemas import ProjectCreate
+from app.schemas import ProjectCreate, ProjectUpdate
 
 app = FastAPI(title="TaskFlow API")
 
@@ -59,6 +59,37 @@ async def get_project(project_id: int) -> dict[str, object]:
                 {"id": project_id},
             )
         ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    return _project_row_to_dict(row)
+
+
+@app.patch("/projects/{project_id}")
+async def update_project(project_id: int, payload: ProjectUpdate) -> dict[str, object]:
+    cambios = payload.model_dump(exclude_unset=True)
+    async with get_engine().begin() as conn:
+        if cambios:
+            # Las claves de `cambios` vienen únicamente de los campos
+            # declarados en ProjectUpdate (name/description), nunca de
+            # entrada arbitraria del cliente, así que el f-string en el
+            # SET es seguro frente a inyección.
+            set_clause = ", ".join(f"{campo} = :{campo}" for campo in cambios)
+            row = (
+                await conn.execute(
+                    text(
+                        f"UPDATE projects SET {set_clause} WHERE id = :id "
+                        "RETURNING id, name, description"
+                    ),
+                    {**cambios, "id": project_id},
+                )
+            ).one_or_none()
+        else:
+            row = (
+                await conn.execute(
+                    text("SELECT id, name, description FROM projects WHERE id = :id"),
+                    {"id": project_id},
+                )
+            ).one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
     return _project_row_to_dict(row)

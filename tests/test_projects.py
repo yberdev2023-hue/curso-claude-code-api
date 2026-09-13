@@ -126,3 +126,75 @@ async def test_get_project_by_id_inexistente_devuelve_404() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Proyecto no encontrado"}
+
+
+# --- Incremento 3: PATCH -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_project_solo_name() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creado = await crear_proyecto(client, name="Casa", description="Tareas del hogar")
+
+        response = await client.patch(f"/projects/{creado['id']}", json={"name": "Hogar"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Hogar"
+    assert body["description"] == "Tareas del hogar"
+
+
+@pytest.mark.asyncio
+async def test_patch_project_solo_description() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creado = await crear_proyecto(client, name="Casa", description="Tareas del hogar")
+
+        response = await client.patch(
+            f"/projects/{creado['id']}", json={"description": "Actualizada"}
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Casa"
+    assert body["description"] == "Actualizada"
+
+
+@pytest.mark.asyncio
+async def test_patch_project_name_y_description_a_la_vez() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creado = await crear_proyecto(client, name="Casa", description="Tareas del hogar")
+
+        response = await client.patch(
+            f"/projects/{creado['id']}",
+            json={"name": "Hogar", "description": "Actualizada"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Hogar"
+    assert body["description"] == "Actualizada"
+
+
+@pytest.mark.asyncio
+async def test_patch_project_sin_campos_no_cambia_nada() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creado = await crear_proyecto(client, name="Casa", description="Tareas del hogar")
+
+        response = await client.patch(f"/projects/{creado['id']}", json={})
+
+    assert response.status_code == 200
+    assert response.json() == creado
+
+
+@pytest.mark.asyncio
+async def test_patch_project_inexistente_devuelve_404() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.patch("/projects/999999", json={"name": "Nuevo"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Proyecto no encontrado"}
