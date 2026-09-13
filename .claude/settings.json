@@ -12,7 +12,8 @@
       "Bash(git diff *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(gh pr merge *)"
     ],
     "ask": [
       "Bash(git push *)"
