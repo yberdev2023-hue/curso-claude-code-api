@@ -198,3 +198,40 @@ async def test_patch_project_inexistente_devuelve_404() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Proyecto no encontrado"}
+
+
+# --- Incremento 4: DELETE -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_project_existente_devuelve_204_sin_cuerpo() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creado = await crear_proyecto(client, name="Casa")
+
+        response = await client.delete(f"/projects/{creado['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+@pytest.mark.asyncio
+async def test_delete_project_luego_get_devuelve_404() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creado = await crear_proyecto(client, name="Casa")
+
+        await client.delete(f"/projects/{creado['id']}")
+        response = await client.get(f"/projects/{creado['id']}")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_project_inexistente_devuelve_404() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.delete("/projects/999999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Proyecto no encontrado"}

@@ -93,3 +93,18 @@ async def update_project(project_id: int, payload: ProjectUpdate) -> dict[str, o
     if row is None:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
     return _project_row_to_dict(row)
+
+
+@app.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(project_id: int) -> None:
+    # Decisión registrada en docs/plan-proyectos.md: la tabla `tasks`
+    # todavía no existe, así que este DELETE no verifica tareas asociadas.
+    # El 409 real de "proyecto con tareas" (docs/contrato-api.md, sección
+    # Proyectos) queda para el incremento de Tareas, que introduce la FK
+    # necesaria para detectarlo.
+    async with get_engine().begin() as conn:
+        result = await conn.execute(
+            text("DELETE FROM projects WHERE id = :id"), {"id": project_id}
+        )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
