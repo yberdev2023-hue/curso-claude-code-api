@@ -266,3 +266,31 @@ async def test_delete_project_con_tareas_devuelve_409(db_connection: AsyncConnec
 
     assert response.status_code == 409
     assert response.json() == {"detail": "El proyecto tiene tareas asociadas"}
+
+
+@pytest.mark.asyncio
+async def test_delete_project_con_tarea_creada_via_api_devuelve_409() -> None:
+    # Igual que test_delete_project_con_tareas_devuelve_409, pero de punta a
+    # punta por la API real (POST /tasks ya existe: docs/plan-tareas.md,
+    # Incremento 3), sin insertar la fila por SQL.
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+
+        estados = (await client.get("/states")).json()
+        pendiente = next(e["id"] for e in estados if e["code"] == "PENDIENTE")
+
+        tarea = await client.post(
+            "/tasks",
+            json={
+                "title": "Regar las plantas",
+                "project_id": proyecto["id"],
+                "state_id": pendiente,
+            },
+        )
+        assert tarea.status_code == 201, tarea.text
+
+        response = await client.delete(f"/projects/{proyecto['id']}")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "El proyecto tiene tareas asociadas"}
