@@ -1,36 +1,21 @@
-"""Tests de la migración inicial: tabla de estados + seed idempotente.
+"""Tests de las migraciones: catálogo de estados y tabla de proyectos.
 
 Corren contra Postgres real (la instancia de `compose.yaml`), nunca contra
-SQLite ni mocks, según `docs/decisiones-ingenieria.md`, usando la conexión
-compartida de `conftest.py`. Manejan Alembic vía subprocess para poder
-validar el ciclo completo upgrade/downgrade tal como lo ve un usuario del
-CLI, y limpian el esquema de versiones de Alembic antes y después de cada
-prueba para partir de una base vacía.
+SQLite ni mocks, según `docs/decisiones-ingenieria.md`, usando la conexión y
+los helpers compartidos de `conftest.py`. Manejan Alembic vía subprocess
+para poder validar el ciclo completo upgrade/downgrade tal como lo ve un
+usuario del CLI, y limpian el esquema de las tablas gestionadas antes y
+después de cada prueba para partir de una base vacía.
 """
-
-import subprocess
-import sys
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from tests.conftest import reset_schema, run_alembic
+
 CATALOGO_ESPERADO = ["PENDIENTE", "EN_CURSO", "BLOQUEADA", "HECHA"]
-
-
-def run_alembic(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *args],
-        capture_output=True,
-        text=True,
-    )
-
-
-async def reset_schema(conn: AsyncConnection) -> None:
-    await conn.execute(text("DROP TABLE IF EXISTS states"))
-    await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
-    await conn.commit()
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -70,15 +55,42 @@ async def test_downgrade_revierte_limpio(db_connection: AsyncConnection) -> None
     result = run_alembic("downgrade", "base")
     assert result.returncode == 0, result.stderr
 
-    existe = (
+    for tabla in ("states", "projects"):
+        existe = (
+            await db_connection.execute(
+                text(
+                    "SELECT EXISTS ("
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_name = :tabla"
+                    ")"
+                ),
+                {"tabla": tabla},
+            )
+        ).scalar_one()
+
+        assert existe is False
+
+
+@pytest.mark.asyncio
+async def test_upgrade_head_crea_tabla_projects_con_columnas_esperadas(
+    db_connection: AsyncConnection,
+) -> None:
+    assert run_alembic("upgrade", "head").returncode == 0
+
+    columnas = (
         await db_connection.execute(
             text(
-                "SELECT EXISTS ("
-                "SELECT 1 FROM information_schema.tables "
-                "WHERE table_name = 'states'"
-                ")"
+                "SELECT column_name, data_type, is_nullable "
+                "FROM information_schema.columns "
+                "WHERE table_name = 'projects'"
             )
         )
-    ).scalar_one()
+    ).all()
+    por_nombre = {row.column_name: row for row in columnas}
 
-    assert existe is False
+    assert set(por_nombre) == {"id", "name", "description"}
+    assert por_nombre["id"].data_type == "integer"
+    assert por_nombre["name"].data_type == "character varying"
+    assert por_nombre["name"].is_nullable == "NO"
+    assert por_nombre["description"].data_type == "text"
+    assert por_nombre["description"].is_nullable == "YES"

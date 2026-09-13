@@ -4,26 +4,15 @@ Corren contra la migración inicial (Incremento 3) y la conexión compartida
 de `conftest.py` (Incremento 4), según `docs/decisiones-ingenieria.md`.
 """
 
-import subprocess
-import sys
-
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db import dispose_engine
 from app.main import app
+from tests.conftest import reset_schema, run_alembic
 
 CATALOGO_ESPERADO = ["PENDIENTE", "EN_CURSO", "BLOQUEADA", "HECHA"]
-
-
-def run_alembic(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *args],
-        capture_output=True,
-        text=True,
-    )
 
 
 @pytest.fixture(autouse=True)
@@ -33,17 +22,13 @@ async def catalogo_migrado(db_connection: AsyncConnection):
     # nuevo en el loop actual (mismo motivo que en tests/conftest.py).
     await dispose_engine()
 
-    await db_connection.execute(text("DROP TABLE IF EXISTS states"))
-    await db_connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
-    await db_connection.commit()
+    await reset_schema(db_connection)
 
     assert run_alembic("upgrade", "head").returncode == 0
 
     yield
 
-    await db_connection.execute(text("DROP TABLE IF EXISTS states"))
-    await db_connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
-    await db_connection.commit()
+    await reset_schema(db_connection)
     await dispose_engine()
 
 
