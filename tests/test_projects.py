@@ -7,6 +7,7 @@ Incremento 1) y la conexión compartida de `conftest.py`, según
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db import dispose_engine
@@ -235,3 +236,33 @@ async def test_delete_project_inexistente_devuelve_404() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Proyecto no encontrado"}
+
+
+# --- Cierre de docs/plan-proyectos.md: 409 real (docs/plan-tareas.md, Incremento 2) ---
+
+
+@pytest.mark.asyncio
+async def test_delete_project_con_tareas_devuelve_409(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creado = await crear_proyecto(client, name="Casa")
+
+        # Los endpoints de Tareas todavía no existen en esta secuencia
+        # (docs/plan-tareas.md, Incremento 2 corre antes que el 3), así
+        # que la fila se inserta directo por SQL.
+        estado = (
+            await db_connection.execute(text("SELECT id FROM states WHERE code = 'PENDIENTE'"))
+        ).scalar_one()
+        await db_connection.execute(
+            text(
+                "INSERT INTO tasks (title, project_id, state_id) "
+                "VALUES ('Regar las plantas', :project_id, :state_id)"
+            ),
+            {"project_id": creado["id"], "state_id": estado},
+        )
+        await db_connection.commit()
+
+        response = await client.delete(f"/projects/{creado['id']}")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "El proyecto tiene tareas asociadas"}

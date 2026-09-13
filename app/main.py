@@ -97,12 +97,20 @@ async def update_project(project_id: int, payload: ProjectUpdate) -> dict[str, o
 
 @app.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: int) -> None:
-    # Decisión registrada en docs/plan-proyectos.md: la tabla `tasks`
-    # todavía no existe, así que este DELETE no verifica tareas asociadas.
-    # El 409 real de "proyecto con tareas" (docs/contrato-api.md, sección
-    # Proyectos) queda para el incremento de Tareas, que introduce la FK
-    # necesaria para detectarlo.
+    # docs/contrato-api.md, sección Proyectos: "409 si tiene tareas". La
+    # tabla `tasks` ya existe (docs/plan-tareas.md, Incremento 1), así que
+    # este chequeo cierra el diferimiento que dejó docs/plan-proyectos.md.
     async with get_engine().begin() as conn:
+        tiene_tareas = (
+            await conn.execute(
+                text("SELECT EXISTS (SELECT 1 FROM tasks WHERE project_id = :id)"),
+                {"id": project_id},
+            )
+        ).scalar_one()
+        if tiene_tareas:
+            raise HTTPException(
+                status_code=409, detail="El proyecto tiene tareas asociadas"
+            )
         result = await conn.execute(
             text("DELETE FROM projects WHERE id = :id"), {"id": project_id}
         )
