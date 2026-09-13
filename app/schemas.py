@@ -42,3 +42,17 @@ class TaskCreate(BaseModel):
     @classmethod
     def _normalizar_title(cls, value: str) -> str:
         return normalizar_titulo(value)
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    project_id: int | None = None
+    state_id: int | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _normalizar_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalizar_titulo(value)

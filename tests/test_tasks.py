@@ -243,3 +243,182 @@ async def test_get_tasks_filtra_por_project_id_y_state_id_solos_y_combinados(
     assert len(solo_proyecto) == 2
     assert len(solo_estado) == 2
     assert combinado == [tarea_a_pendiente]
+
+
+# --- Incremento 4: lectura, actualización y borrado -----------------------
+
+
+@pytest.mark.asyncio
+async def test_get_task_by_id_existente(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        response = await client.get(f"/tasks/{creada['id']}")
+
+    assert response.status_code == 200
+    assert response.json() == creada
+
+
+@pytest.mark.asyncio
+async def test_get_task_by_id_inexistente_devuelve_404() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/tasks/999999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Tarea no encontrada"}
+
+
+@pytest.mark.asyncio
+async def test_patch_task_solo_title(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        response = await client.patch(f"/tasks/{creada['id']}", json={"title": "Regar todo"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Regar todo"
+    assert body["project_id"] == proyecto["id"]
+    assert body["state_id"] == estado
+
+
+@pytest.mark.asyncio
+async def test_patch_task_solo_description(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        response = await client.patch(
+            f"/tasks/{creada['id']}", json={"description": "Todos los días"}
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Regar"
+    assert body["description"] == "Todos los días"
+
+
+@pytest.mark.asyncio
+async def test_patch_task_project_id_y_state_id(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto_a = await crear_proyecto(client, name="Casa")
+        proyecto_b = await crear_proyecto(client, name="Trabajo")
+        pendiente = await obtener_id_estado(db_connection, "PENDIENTE")
+        en_curso = await obtener_id_estado(db_connection, "EN_CURSO")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto_a["id"], state_id=pendiente
+        )
+
+        response = await client.patch(
+            f"/tasks/{creada['id']}",
+            json={"project_id": proyecto_b["id"], "state_id": en_curso},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["project_id"] == proyecto_b["id"]
+    assert body["state_id"] == en_curso
+
+
+@pytest.mark.asyncio
+async def test_patch_task_sin_campos_no_cambia_nada(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        response = await client.patch(f"/tasks/{creada['id']}", json={})
+
+    assert response.status_code == 200
+    assert response.json() == creada
+
+
+@pytest.mark.asyncio
+async def test_patch_task_project_id_inexistente_devuelve_422(
+    db_connection: AsyncConnection,
+) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        response = await client.patch(f"/tasks/{creada['id']}", json={"project_id": 999999})
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "El proyecto 999999 no existe"}
+
+
+@pytest.mark.asyncio
+async def test_patch_task_inexistente_devuelve_404() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.patch("/tasks/999999", json={"title": "Nuevo"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Tarea no encontrada"}
+
+
+@pytest.mark.asyncio
+async def test_delete_task_existente_devuelve_204_sin_cuerpo(
+    db_connection: AsyncConnection,
+) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        response = await client.delete(f"/tasks/{creada['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+@pytest.mark.asyncio
+async def test_delete_task_luego_get_devuelve_404(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        await client.delete(f"/tasks/{creada['id']}")
+        response = await client.get(f"/tasks/{creada['id']}")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_task_inexistente_devuelve_404() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.delete("/tasks/999999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Tarea no encontrada"}

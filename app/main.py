@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import text
 
 from app.db import get_engine
-from app.schemas import ProjectCreate, ProjectUpdate, TaskCreate
+from app.schemas import ProjectCreate, ProjectUpdate, TaskCreate, TaskUpdate
 
 app = FastAPI(title="TaskFlow API")
 
@@ -200,3 +200,70 @@ async def list_tasks(
             parametros,
         )
         return [_task_row_to_dict(row) for row in rows]
+
+
+@app.get("/tasks/{task_id}")
+async def get_task(task_id: int) -> dict[str, object]:
+    async with get_engine().connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    "SELECT id, title, description, project_id, state_id "
+                    "FROM tasks WHERE id = :id"
+                ),
+                {"id": task_id},
+            )
+        ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+    return _task_row_to_dict(row)
+
+
+@app.patch("/tasks/{task_id}")
+async def update_task(task_id: int, payload: TaskUpdate) -> dict[str, object]:
+    cambios = payload.model_dump(exclude_unset=True)
+    async with get_engine().begin() as conn:
+        # Mismas validaciones que en la creación (docs/plan-tareas.md,
+        # Incremento 4): solo se valida lo que efectivamente cambia.
+        if "project_id" in cambios:
+            await _validar_proyecto_existe(conn, cambios["project_id"])
+        if "state_id" in cambios:
+            await _validar_estado_existe(conn, cambios["state_id"])
+
+        if cambios:
+            # Las claves de `cambios` vienen únicamente de los campos
+            # declarados en TaskUpdate, nunca de entrada arbitraria del
+            # cliente, así que el f-string en el SET es seguro.
+            set_clause = ", ".join(f"{campo} = :{campo}" for campo in cambios)
+            row = (
+                await conn.execute(
+                    text(
+                        f"UPDATE tasks SET {set_clause} WHERE id = :id "
+                        "RETURNING id, title, description, project_id, state_id"
+                    ),
+                    {**cambios, "id": task_id},
+                )
+            ).one_or_none()
+        else:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT id, title, description, project_id, state_id "
+                        "FROM tasks WHERE id = :id"
+                    ),
+                    {"id": task_id},
+                )
+            ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+    return _task_row_to_dict(row)
+
+
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(task_id: int) -> None:
+    async with get_engine().begin() as conn:
+        result = await conn.execute(
+            text("DELETE FROM tasks WHERE id = :id"), {"id": task_id}
+        )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
