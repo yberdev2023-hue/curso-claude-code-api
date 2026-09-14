@@ -196,7 +196,10 @@ async def test_upgrade_head_agrega_due_at_a_tasks(db_connection: AsyncConnection
 async def test_downgrade_de_due_at_revierte_limpio_sin_afectar_el_resto_de_tasks(
     db_connection: AsyncConnection,
 ) -> None:
-    assert run_alembic("upgrade", "head").returncode == 0
+    # Se sube exactamente a la migración de due_at, no a `head`: desde que
+    # existe la migración de `priority` (Tareas v3), `head` ya no coincide
+    # con el estado que este test verifica.
+    assert run_alembic("upgrade", "7933dbf104b4").returncode == 0
 
     # Un paso atrás: revierte solo la migración de due_at (Incremento 5 de
     # docs/plan-tareas.md), no toda la cadena, según la Matriz Mínima de
