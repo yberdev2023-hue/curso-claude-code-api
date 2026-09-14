@@ -141,6 +141,7 @@ def _task_row_to_dict(row) -> dict[str, object]:
         "project_id": row.project_id,
         "state_id": row.state_id,
         "due_at": _serializar_due_at(row.due_at),
+        "priority": row.priority,
     }
 
 
@@ -178,9 +179,11 @@ async def create_task(payload: TaskCreate) -> dict[str, object]:
         row = (
             await conn.execute(
                 text(
-                    "INSERT INTO tasks (title, description, project_id, state_id, due_at) "
-                    "VALUES (:title, :description, :project_id, :state_id, :due_at) "
-                    "RETURNING id, title, description, project_id, state_id, due_at"
+                    "INSERT INTO tasks "
+                    "(title, description, project_id, state_id, due_at, priority) "
+                    "VALUES "
+                    "(:title, :description, :project_id, :state_id, :due_at, :priority) "
+                    "RETURNING id, title, description, project_id, state_id, due_at, priority"
                 ),
                 {
                     "title": payload.title,
@@ -188,6 +191,7 @@ async def create_task(payload: TaskCreate) -> dict[str, object]:
                     "project_id": payload.project_id,
                     "state_id": payload.state_id,
                     "due_at": payload.due_at,
+                    "priority": payload.priority,
                 },
             )
         ).one()
@@ -221,7 +225,7 @@ async def list_tasks(
     async with get_engine().connect() as conn:
         rows = await conn.execute(
             text(
-                "SELECT id, title, description, project_id, state_id, due_at "
+                "SELECT id, title, description, project_id, state_id, due_at, priority "
                 f"FROM tasks {where} ORDER BY id"
             ),
             parametros,
@@ -235,7 +239,7 @@ async def get_task(task_id: int) -> dict[str, object]:
         row = (
             await conn.execute(
                 text(
-                    "SELECT id, title, description, project_id, state_id, due_at "
+                    "SELECT id, title, description, project_id, state_id, due_at, priority "
                     "FROM tasks WHERE id = :id"
                 ),
                 {"id": task_id},
@@ -266,7 +270,8 @@ async def update_task(task_id: int, payload: TaskUpdate) -> dict[str, object]:
                 await conn.execute(
                     text(
                         f"UPDATE tasks SET {set_clause} WHERE id = :id "
-                        "RETURNING id, title, description, project_id, state_id, due_at"
+                        "RETURNING id, title, description, project_id, state_id, "
+                        "due_at, priority"
                     ),
                     {**cambios, "id": task_id},
                 )
@@ -275,7 +280,8 @@ async def update_task(task_id: int, payload: TaskUpdate) -> dict[str, object]:
             row = (
                 await conn.execute(
                     text(
-                        "SELECT id, title, description, project_id, state_id, due_at "
+                        "SELECT id, title, description, project_id, state_id, "
+                        "due_at, priority "
                         "FROM tasks WHERE id = :id"
                     ),
                     {"id": task_id},

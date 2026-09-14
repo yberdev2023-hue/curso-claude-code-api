@@ -72,9 +72,8 @@ async def test_post_tasks_devuelve_201_y_esquema_exacto(db_connection: AsyncConn
 
     assert response.status_code == 201
     body = response.json()
-    # Esquema v2 (docs/contrato-api.md, sección Esquemas de Respuesta):
-    # due_at siempre presente, null si no se fijó. Antes del Incremento 6
-    # este test no incluía due_at porque la API todavía no lo soportaba.
+    # Esquema v3 (docs/contrato-api.md, sección Esquemas de Respuesta):
+    # due_at y priority siempre presentes, null si no se fijaron.
     assert set(body.keys()) == {
         "id",
         "title",
@@ -82,6 +81,7 @@ async def test_post_tasks_devuelve_201_y_esquema_exacto(db_connection: AsyncConn
         "project_id",
         "state_id",
         "due_at",
+        "priority",
     }
     assert isinstance(body["id"], int) and body["id"] > 0
     assert body["title"] == "Regar las plantas"
@@ -89,6 +89,7 @@ async def test_post_tasks_devuelve_201_y_esquema_exacto(db_connection: AsyncConn
     assert body["project_id"] == proyecto["id"]
     assert body["state_id"] == estado
     assert body["due_at"] is None
+    assert body["priority"] is None
 
 
 @pytest.mark.asyncio
