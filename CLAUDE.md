@@ -22,11 +22,5 @@ uv run ruff check .   # lint
 
 ## Reglas no negociables
 
-- Las pruebas que ejercitan persistencia corren contra **PostgreSQL**.
-  Nunca SQLite: no reproduce las mismas restricciones, tipos ni migraciones
-  (detalle en `docs/decisiones-ingenieria.md`).
 - Nunca abrir, mostrar, editar ni confirmar (`git add`/commit) `.env`. Para
   nombres de variables, usar `.env.example`.
-- Nunca debilitar ni eliminar un test existente para conseguir verde. Si el
-  comportamiento acordado cambió, primero se actualiza el contrato y después
-  el test, en un commit separado.
