@@ -72,12 +72,23 @@ async def test_post_tasks_devuelve_201_y_esquema_exacto(db_connection: AsyncConn
 
     assert response.status_code == 201
     body = response.json()
-    assert set(body.keys()) == {"id", "title", "description", "project_id", "state_id"}
+    # Esquema v2 (docs/contrato-api.md, sección Esquemas de Respuesta):
+    # due_at siempre presente, null si no se fijó. Antes del Incremento 6
+    # este test no incluía due_at porque la API todavía no lo soportaba.
+    assert set(body.keys()) == {
+        "id",
+        "title",
+        "description",
+        "project_id",
+        "state_id",
+        "due_at",
+    }
     assert isinstance(body["id"], int) and body["id"] > 0
     assert body["title"] == "Regar las plantas"
     assert body["description"] == "Todos los días"
     assert body["project_id"] == proyecto["id"]
     assert body["state_id"] == estado
+    assert body["due_at"] is None
 
 
 @pytest.mark.asyncio
@@ -422,3 +433,160 @@ async def test_delete_task_inexistente_devuelve_404() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Tarea no encontrada"}
+
+
+# --- Incremento 6: validación, esquema y overdue de due_at ----------------
+
+
+@pytest.mark.asyncio
+async def test_post_tasks_sin_due_at_lo_devuelve_null(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+
+        response = await client.post(
+            "/tasks",
+            json={"title": "Regar", "project_id": proyecto["id"], "state_id": estado},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["due_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_post_tasks_due_at_valido_se_normaliza_a_utc_sin_microsegundos(
+    db_connection: AsyncConnection,
+) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+
+        # Con desplazamiento (+02:00) y microsegundos, para verificar que
+        # la API normaliza a UTC y recorta a segundos enteros al serializar.
+        response = await client.post(
+            "/tasks",
+            json={
+                "title": "Regar",
+                "project_id": proyecto["id"],
+                "state_id": estado,
+                "due_at": "2030-06-15T12:30:00.123456+02:00",
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["due_at"] == "2030-06-15T10:30:00Z"
+
+
+@pytest.mark.asyncio
+async def test_post_tasks_due_at_sin_zona_devuelve_422(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+
+        response = await client.post(
+            "/tasks",
+            json={
+                "title": "Regar",
+                "project_id": proyecto["id"],
+                "state_id": estado,
+                "due_at": "2030-06-15T12:30:00",
+            },
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_tasks_due_at_sin_zona_devuelve_422(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client, title="Regar", project_id=proyecto["id"], state_id=estado
+        )
+
+        response = await client.patch(
+            f"/tasks/{creada['id']}", json={"due_at": "2030-06-15T12:30:00"}
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_tasks_overdue_true_devuelve_solo_vencidas_y_no_hechas(
+    db_connection: AsyncConnection,
+) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        pendiente = await obtener_id_estado(db_connection, "PENDIENTE")
+        hecha = await obtener_id_estado(db_connection, "HECHA")
+
+        sin_fecha = await crear_tarea(
+            client, title="Sin fecha", project_id=proyecto["id"], state_id=pendiente
+        )
+        vencida = await crear_tarea(
+            client,
+            title="Vencida",
+            project_id=proyecto["id"],
+            state_id=pendiente,
+            due_at="2020-01-01T00:00:00Z",
+        )
+        futura = await crear_tarea(
+            client,
+            title="Futura",
+            project_id=proyecto["id"],
+            state_id=pendiente,
+            due_at="2999-01-01T00:00:00Z",
+        )
+        vencida_hecha = await crear_tarea(
+            client,
+            title="Vencida pero hecha",
+            project_id=proyecto["id"],
+            state_id=hecha,
+            due_at="2020-01-01T00:00:00Z",
+        )
+
+        response = await client.get("/tasks", params={"overdue": "true"})
+
+    assert response.status_code == 200
+    ids_devueltos = {t["id"] for t in response.json()}
+    assert ids_devueltos == {vencida["id"]}
+    assert sin_fecha["id"] not in ids_devueltos
+    assert futura["id"] not in ids_devueltos
+    assert vencida_hecha["id"] not in ids_devueltos
+
+
+@pytest.mark.asyncio
+async def test_get_tasks_overdue_combinado_con_project_id(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto_a = await crear_proyecto(client, name="Casa")
+        proyecto_b = await crear_proyecto(client, name="Trabajo")
+        pendiente = await obtener_id_estado(db_connection, "PENDIENTE")
+
+        vencida_a = await crear_tarea(
+            client,
+            title="Vencida A",
+            project_id=proyecto_a["id"],
+            state_id=pendiente,
+            due_at="2020-01-01T00:00:00Z",
+        )
+        await crear_tarea(
+            client,
+            title="Vencida B",
+            project_id=proyecto_b["id"],
+            state_id=pendiente,
+            due_at="2020-01-01T00:00:00Z",
+        )
+
+        response = await client.get(
+            "/tasks", params={"overdue": "true", "project_id": proyecto_a["id"]}
+        )
+
+    assert response.status_code == 200
+    assert [t["id"] for t in response.json()] == [vencida_a["id"]]
