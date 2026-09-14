@@ -80,10 +80,13 @@ ejecuta el reparto: esta skill propone, no confirma nada por sí sola.
   `git commit` solo corren después de una instrucción explícita del
   usuario para hacerlo, nunca antes de haber mostrado el mensaje completo
   de cada commit.
-- No modifica el contenido de ningún archivo: si un archivo mezcla
-  intenciones, el reparto se logra con staging parcial (`git add -p`, o un
-  patch extraído a mano) sobre el contenido ya existente, no reescribiendo
-  el archivo.
+- Cada commit se arma exclusivamente con `git add` (de archivos completos)
+  o `git add -p` (de fragmentos), siempre sobre el cambio que ya existe en
+  el árbol de trabajo. Nunca se edita, revierte ni reescribe el contenido
+  de un archivo para separar intenciones o para reconstruir el estado que
+  tendría un commit intermedio: si un archivo mezcla dos intenciones, se
+  resuelve con `git add -p` sobre ese archivo, sin tocar una sola línea de
+  su contenido.
 - No corre `git push`.
 
 ## Procedimiento al invocarla
@@ -98,5 +101,8 @@ ejecuta el reparto: esta skill propone, no confirma nada por sí sola.
 4. Redactar el mensaje completo de cada commit.
 5. Mostrar al usuario el reparto completo: por cada commit, los
    archivos/fragmentos que incluye y el mensaje propuesto.
-6. Esperar aprobación explícita para ejecutar. No correr `git add` ni
-   `git commit` hasta obtenerla.
+6. Esperar aprobación explícita para ejecutar. Ejecutar es siempre
+   `git add` (completo) o `git add -p` (por fragmentos) sobre el cambio ya
+   existente, seguido de `git commit`; nunca se edita ni reescribe un
+   archivo para armarlo. No correr `git add` ni `git commit` hasta obtener
+   la aprobación.

@@ -118,6 +118,12 @@ evaluación y estado distinto de `HECHA`. Una tarea sin fecha no está vencida.
 Fuera de alcance: recordatorios, scheduler, zona preferida del usuario y cambio
 automático de estado.
 
+## Tareas v3: Prioridad
+
+Se añade `priority`, opcional, un entero entre `1` (la más baja) y `5` (la
+más alta). Omitirlo conserva compatibilidad con v1 y v2. Un valor fuera de
+ese rango, o que no sea un entero, se rechaza con `422`.
+
 ## Esquemas de Respuesta
 
 Estos son los campos que devuelve cada recurso. **Ni más ni menos**: un campo de
@@ -130,14 +136,15 @@ sobra rompe a quien consuma la API igual que uno que falta.
 // Proyecto
 {"id": 1, "name": "Casa", "description": null}
 
-// Tarea (v2; en v1, sin due_at)
+// Tarea (v3; en v1, sin due_at ni priority; en v2, sin priority)
 {
   "id": 1,
   "title": "Regar las plantas",
   "description": null,
   "project_id": 1,
   "state_id": 1,
-  "due_at": "2026-03-01T09:00:00Z"
+  "due_at": "2026-03-01T09:00:00Z",
+  "priority": null
 }
 ```
 
@@ -163,5 +170,6 @@ Tres detalles que deciden si dos implementaciones son intercambiables:
 - Migración desde base vacía y rollback de v2.
 - El catálogo de estados existe tras migrar, y migrar dos veces no lo duplica.
 - `due_at` omitido, válido, sin zona, vencido, futuro y tarea hecha.
+- `priority` omitido, válido (entre `1` y `5`) y fuera de rango.
 
 Los tests pueden incluir casos adicionales. No pueden debilitar estas invariantes.
