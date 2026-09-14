@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import text
 
@@ -118,6 +120,19 @@ async def delete_project(project_id: int) -> None:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
 
+def _serializar_due_at(value: datetime | None) -> str | None:
+    # docs/contrato-api.md, sección Esquemas de Respuesta: siempre en UTC,
+    # con sufijo Z (no +00:00) y sin microsegundos.
+    if value is None:
+        return None
+    return (
+        value.astimezone(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
 def _task_row_to_dict(row) -> dict[str, object]:
     return {
         "id": row.id,
@@ -125,6 +140,7 @@ def _task_row_to_dict(row) -> dict[str, object]:
         "description": row.description,
         "project_id": row.project_id,
         "state_id": row.state_id,
+        "due_at": _serializar_due_at(row.due_at),
     }
 
 
@@ -162,15 +178,16 @@ async def create_task(payload: TaskCreate) -> dict[str, object]:
         row = (
             await conn.execute(
                 text(
-                    "INSERT INTO tasks (title, description, project_id, state_id) "
-                    "VALUES (:title, :description, :project_id, :state_id) "
-                    "RETURNING id, title, description, project_id, state_id"
+                    "INSERT INTO tasks (title, description, project_id, state_id, due_at) "
+                    "VALUES (:title, :description, :project_id, :state_id, :due_at) "
+                    "RETURNING id, title, description, project_id, state_id, due_at"
                 ),
                 {
                     "title": payload.title,
                     "description": payload.description,
                     "project_id": payload.project_id,
                     "state_id": payload.state_id,
+                    "due_at": payload.due_at,
                 },
             )
         ).one()
@@ -179,7 +196,9 @@ async def create_task(payload: TaskCreate) -> dict[str, object]:
 
 @app.get("/tasks")
 async def list_tasks(
-    project_id: int | None = None, state_id: int | None = None
+    project_id: int | None = None,
+    state_id: int | None = None,
+    overdue: bool = False,
 ) -> list[dict[str, object]]:
     condiciones = []
     parametros: dict[str, object] = {}
@@ -189,12 +208,20 @@ async def list_tasks(
     if state_id is not None:
         condiciones.append("state_id = :state_id")
         parametros["state_id"] = state_id
+    if overdue:
+        # docs/contrato-api.md, sección Tareas v2: vencida = due_at anterior
+        # al instante de evaluación (now() de la base) y estado distinto de
+        # HECHA. Una tarea sin due_at nunca está vencida.
+        condiciones.append(
+            "due_at IS NOT NULL AND due_at < now() "
+            "AND state_id NOT IN (SELECT id FROM states WHERE code = 'HECHA')"
+        )
 
     where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
     async with get_engine().connect() as conn:
         rows = await conn.execute(
             text(
-                "SELECT id, title, description, project_id, state_id "
+                "SELECT id, title, description, project_id, state_id, due_at "
                 f"FROM tasks {where} ORDER BY id"
             ),
             parametros,
@@ -208,7 +235,7 @@ async def get_task(task_id: int) -> dict[str, object]:
         row = (
             await conn.execute(
                 text(
-                    "SELECT id, title, description, project_id, state_id "
+                    "SELECT id, title, description, project_id, state_id, due_at "
                     "FROM tasks WHERE id = :id"
                 ),
                 {"id": task_id},
@@ -239,7 +266,7 @@ async def update_task(task_id: int, payload: TaskUpdate) -> dict[str, object]:
                 await conn.execute(
                     text(
                         f"UPDATE tasks SET {set_clause} WHERE id = :id "
-                        "RETURNING id, title, description, project_id, state_id"
+                        "RETURNING id, title, description, project_id, state_id, due_at"
                     ),
                     {**cambios, "id": task_id},
                 )
@@ -248,7 +275,7 @@ async def update_task(task_id: int, payload: TaskUpdate) -> dict[str, object]:
             row = (
                 await conn.execute(
                     text(
-                        "SELECT id, title, description, project_id, state_id "
+                        "SELECT id, title, description, project_id, state_id, due_at "
                         "FROM tasks WHERE id = :id"
                     ),
                     {"id": task_id},
