@@ -202,7 +202,7 @@ async def create_task(payload: TaskCreate) -> dict[str, object]:
 async def list_tasks(
     project_id: int | None = None,
     state_id: int | None = None,
-    overdue: bool = False,
+    overdue: str | None = None,
 ) -> list[dict[str, object]]:
     condiciones = []
     parametros: dict[str, object] = {}
@@ -212,14 +212,23 @@ async def list_tasks(
     if state_id is not None:
         condiciones.append("state_id = :state_id")
         parametros["state_id"] = state_id
-    if overdue:
-        # docs/contrato-api.md, sección Tareas v2: vencida = due_at anterior
-        # al instante de evaluación (now() de la base) y estado distinto de
-        # HECHA. Una tarea sin due_at nunca está vencida.
-        condiciones.append(
-            "due_at IS NOT NULL AND due_at < now() "
-            "AND state_id NOT IN (SELECT id FROM states WHERE code = 'HECHA')"
-        )
+    if overdue is not None:
+        # docs/contrato-api.md, sección Tareas v2: overdue es sensible a
+        # mayúsculas/minúsculas, solo "true"/"false" en minúscula son
+        # válidos. `bool` de FastAPI acepta "True"/"TRUE"/"1"/"yes", así
+        # que se valida a mano contra str en vez de tipar el parámetro.
+        if overdue not in ("true", "false"):
+            raise HTTPException(
+                status_code=422, detail="overdue debe ser 'true' o 'false'"
+            )
+        if overdue == "true":
+            # vencida = due_at anterior al instante de evaluación (now() de
+            # la base) y estado distinto de HECHA. Una tarea sin due_at
+            # nunca está vencida.
+            condiciones.append(
+                "due_at IS NOT NULL AND due_at < now() "
+                "AND state_id NOT IN (SELECT id FROM states WHERE code = 'HECHA')"
+            )
 
     where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
     async with get_engine().connect() as conn:

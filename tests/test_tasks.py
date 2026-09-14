@@ -591,3 +591,43 @@ async def test_get_tasks_overdue_combinado_con_project_id(db_connection: AsyncCo
 
     assert response.status_code == 200
     assert [t["id"] for t in response.json()] == [vencida_a["id"]]
+
+
+@pytest.mark.asyncio
+async def test_get_tasks_overdue_false_no_filtra(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        pendiente = await obtener_id_estado(db_connection, "PENDIENTE")
+        creada = await crear_tarea(
+            client,
+            title="Vencida",
+            project_id=proyecto["id"],
+            state_id=pendiente,
+            due_at="2020-01-01T00:00:00Z",
+        )
+
+        response = await client.get("/tasks", params={"overdue": "false"})
+
+    assert response.status_code == 200
+    assert [t["id"] for t in response.json()] == [creada["id"]]
+
+
+@pytest.mark.asyncio
+async def test_get_tasks_overdue_mayuscula_devuelve_422() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/tasks", params={"overdue": "True"})
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "overdue debe ser 'true' o 'false'"}
+
+
+@pytest.mark.asyncio
+async def test_get_tasks_overdue_valor_invalido_devuelve_422() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/tasks", params={"overdue": "1"})
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "overdue debe ser 'true' o 'false'"}
