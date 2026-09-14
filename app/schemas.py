@@ -33,6 +33,16 @@ def normalizar_due_at(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC)
 
 
+def validar_priority(value: int | None) -> int | None:
+    """Rechaza un valor fuera de 1-5 (docs/contrato-api.md, sección
+    Tareas v3)."""
+    if value is None:
+        return None
+    if not 1 <= value <= 5:
+        raise ValueError("priority debe estar entre 1 y 5")
+    return value
+
+
 class ProjectCreate(BaseModel):
     name: str
     description: str | None = None
@@ -49,6 +59,7 @@ class TaskCreate(BaseModel):
     project_id: int
     state_id: int
     due_at: datetime | None = None
+    priority: int | None = None
 
     @field_validator("title")
     @classmethod
@@ -60,6 +71,11 @@ class TaskCreate(BaseModel):
     def _normalizar_due_at(cls, value: datetime | None) -> datetime | None:
         return normalizar_due_at(value)
 
+    @field_validator("priority")
+    @classmethod
+    def _validar_priority(cls, value: int | None) -> int | None:
+        return validar_priority(value)
+
 
 class TaskUpdate(BaseModel):
     title: str | None = None
@@ -67,6 +83,7 @@ class TaskUpdate(BaseModel):
     project_id: int | None = None
     state_id: int | None = None
     due_at: datetime | None = None
+    priority: int | None = None
 
     @field_validator("title")
     @classmethod
@@ -79,3 +96,8 @@ class TaskUpdate(BaseModel):
     @classmethod
     def _normalizar_due_at(cls, value: datetime | None) -> datetime | None:
         return normalizar_due_at(value)
+
+    @field_validator("priority")
+    @classmethod
+    def _validar_priority(cls, value: int | None) -> int | None:
+        return validar_priority(value)
