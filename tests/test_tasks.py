@@ -93,6 +93,49 @@ async def test_post_tasks_devuelve_201_y_esquema_exacto(db_connection: AsyncConn
 
 
 @pytest.mark.asyncio
+async def test_post_tasks_priority_valida_se_guarda_igual(db_connection: AsyncConnection) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+
+        response = await client.post(
+            "/tasks",
+            json={
+                "title": "Regar",
+                "project_id": proyecto["id"],
+                "state_id": estado,
+                "priority": 3,
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["priority"] == 3
+
+
+@pytest.mark.asyncio
+async def test_post_tasks_priority_fuera_de_rango_devuelve_422(
+    db_connection: AsyncConnection,
+) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        proyecto = await crear_proyecto(client, name="Casa")
+        estado = await obtener_id_estado(db_connection, "PENDIENTE")
+
+        response = await client.post(
+            "/tasks",
+            json={
+                "title": "Regar",
+                "project_id": proyecto["id"],
+                "state_id": estado,
+                "priority": 6,
+            },
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_post_tasks_sin_description_la_devuelve_null(db_connection: AsyncConnection) -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
