@@ -29,7 +29,7 @@ Se aplica a `title` de tarea, **antes** de validar y guardar:
    y `Zs`.
 
 La sesión 7 trabaja este defecto a fondo, con un título que parece válido y no
-lo es.
+lo es; ya está resuelto en `app/schemas.py`.
 
 ### Orden de las listas
 
