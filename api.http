@@ -1,0 +1,134 @@
+### Variables
+# Requiere la extensión REST Client (VS Code) o equivalente que entienda
+# bloques ### y capturas de {{nombre.response.body.$.campo}}.
+@baseUrl = http://127.0.0.1:8000
+
+### Salud: GET /health -> 200 {"status": "ok"}
+GET {{baseUrl}}/health
+
+### Estados: GET /states -> 200, catálogo fijo ordenado. Se usa para
+### obtener un state_id real (PENDIENTE) sin adivinarlo a mano.
+# @name states
+GET {{baseUrl}}/states
+
+### Proyectos: POST /projects -> 201, crea el proyecto que usan las tareas
+# @name crearProyecto
+POST {{baseUrl}}/projects
+Content-Type: application/json
+
+{
+  "name": "Casa",
+  "description": "Tareas del hogar"
+}
+
+### Proyectos: GET /projects -> 200, orden determinista por id ascendente
+GET {{baseUrl}}/projects
+
+### Proyectos: GET /projects/{id} -> 200, el proyecto recién creado
+GET {{baseUrl}}/projects/{{crearProyecto.response.body.$.id}}
+
+### Proyectos: PATCH /projects/{id} -> 200, actualización parcial (solo description)
+PATCH {{baseUrl}}/projects/{{crearProyecto.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "description": "Tareas del hogar y del jardín"
+}
+
+### Proyectos: GET /projects/{id} con id inexistente -> 404
+GET {{baseUrl}}/projects/999999
+
+### Tareas v1: POST /tasks -> 201, usa el project_id y state_id ya creados
+# @name crearTarea
+POST {{baseUrl}}/tasks
+Content-Type: application/json
+
+{
+  "title": "Regar las plantas",
+  "description": "Todos los días",
+  "project_id": {{crearProyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[0].id}}
+}
+
+### Tareas v1: POST /tasks con título solo espacios -> 422 (validación falla)
+POST {{baseUrl}}/tasks
+Content-Type: application/json
+
+{
+  "title": "   ",
+  "project_id": {{crearProyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[0].id}}
+}
+
+### Tareas v1: POST /tasks con project_id inexistente -> 422 (referencia inválida)
+POST {{baseUrl}}/tasks
+Content-Type: application/json
+
+{
+  "title": "Tarea huérfana",
+  "project_id": 999999,
+  "state_id": {{states.response.body.$[0].id}}
+}
+
+### Tareas v1: GET /tasks -> 200, lista en la raíz, orden por id ascendente
+GET {{baseUrl}}/tasks
+
+### Tareas v1: GET /tasks?project_id=... -> 200, filtro por proyecto
+GET {{baseUrl}}/tasks?project_id={{crearProyecto.response.body.$.id}}
+
+### Tareas v1: GET /tasks?project_id=...&state_id=... -> 200, filtros combinados
+GET {{baseUrl}}/tasks?project_id={{crearProyecto.response.body.$.id}}&state_id={{states.response.body.$[0].id}}
+
+### Tareas v1: GET /tasks/{id} -> 200, la tarea recién creada
+GET {{baseUrl}}/tasks/{{crearTarea.response.body.$.id}}
+
+### Tareas v1: GET /tasks/{id} con id inexistente -> 404
+GET {{baseUrl}}/tasks/999999
+
+### Tareas v1: PATCH /tasks/{id} -> 200, actualización parcial (solo title)
+PATCH {{baseUrl}}/tasks/{{crearTarea.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "title": "Regar las plantas del balcón"
+}
+
+### Tareas v2: PATCH /tasks/{id} con due_at válido con zona -> 200, normalizado a UTC
+PATCH {{baseUrl}}/tasks/{{crearTarea.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "due_at": "2026-03-01T09:00:00-03:00"
+}
+
+### Tareas v2: POST /tasks con due_at sin zona -> 422 (ambigua, se rechaza)
+POST {{baseUrl}}/tasks
+Content-Type: application/json
+
+{
+  "title": "Tarea con fecha ambigua",
+  "project_id": {{crearProyecto.response.body.$.id}},
+  "state_id": {{states.response.body.$[0].id}},
+  "due_at": "2026-03-01T09:00:00"
+}
+
+### Tareas v2: GET /tasks?overdue=true -> 200, solo vencidas y no HECHA
+GET {{baseUrl}}/tasks?overdue=true
+
+### Tareas v2: GET /tasks?overdue=TRUE -> 422 (sensible a mayúsculas/minúsculas)
+GET {{baseUrl}}/tasks?overdue=TRUE
+
+### Proyectos: DELETE /projects/{id} con tareas asociadas -> 409 (conflicto)
+DELETE {{baseUrl}}/projects/{{crearProyecto.response.body.$.id}}
+
+### Tareas v1: DELETE /tasks/{id} -> 204 sin cuerpo, libera al proyecto
+DELETE {{baseUrl}}/tasks/{{crearTarea.response.body.$.id}}
+
+### Tareas v1: GET /tasks/{id} tras borrarla -> 404
+GET {{baseUrl}}/tasks/{{crearTarea.response.body.$.id}}
+
+### Proyectos: DELETE /projects/{id} ya sin tareas -> 204 sin cuerpo
+DELETE {{baseUrl}}/projects/{{crearProyecto.response.body.$.id}}
+
+### Proyectos: GET /projects/{id} tras borrarlo -> 404
+GET {{baseUrl}}/projects/{{crearProyecto.response.body.$.id}}

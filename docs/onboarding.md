@@ -9,11 +9,8 @@ cita de archivo y línea), inferencias razonables y puntos desconocidos.
   esquemas de respuesta, orden de listas, normalización de texto) está fijado
   en `docs/contrato-api.md:1-167`. La línea 3 lo declara explícitamente:
   *"Este documento fija comportamiento observable"*.
-- El código actual (`app/main.py:1-9`) solo implementa una fracción mínima de
-  ese contrato: `GET /health`. El resto (`states`, `projects`, `tasks`,
-  `due_at`) está documentado pero no implementado — así lo advierte
-  `README.md:4-5`: *"esta primera entrega expone únicamente `GET /health`; el
-  resto del contrato se implementa en sesiones posteriores"*.
+- El código en `app/main.py` ya implementa el contrato completo (`states`,
+  `projects`, `tasks` con `due_at` y `priority`), no solo `GET /health`.
 
 ## 2. Comandos exactos
 

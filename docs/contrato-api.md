@@ -10,7 +10,8 @@ abierta salvo las restricciones de seguridad, migración y verificación.
 - `404` para recurso inexistente, `409` para conflicto y `422` para entrada inválida.
 - Los códigos de las tablas siguientes son parte del contrato: son lo que
   afirman los tests, y lo que la sesión 10 compara al revisar. No los cambies
-  sin cambiar antes este documento.
+  sin cambiar antes este documento. No existe todavía un artefacto de esa
+  sesión en el repositorio.
 - Errores con forma estable: `{"detail": "<mensaje>"}`, donde el mensaje es una
   cadena legible. Para un `422` de validación se admite además la forma que
   genere tu framework, siempre que la clave de primer nivel siga siendo
@@ -28,7 +29,7 @@ Se aplica a `title` de tarea, **antes** de validar y guardar:
    y `Zs`.
 
 La sesión 7 trabaja este defecto a fondo, con un título que parece válido y no
-lo es.
+lo es; ya está resuelto en `app/schemas.py`.
 
 ### Orden de las listas
 
